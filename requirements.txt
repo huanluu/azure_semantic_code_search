@@ -1,0 +1,6 @@
+azure-search-documents==11.7.0b1
+azure-ai-projects>=1.0.0b8
+azure-ai-agents>=1.0.0b6
+azure-identity>=1.17.0
+python-dotenv>=1.0.1
+requests>=2.32.3

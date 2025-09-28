@@ -1,0 +1,29 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.env
+.env.local
+.env.development
+.env.production
+.venv/
+venv/
+ENV/
+
+# Logs and caches
+*.log
+*.cache/
+
+# macOS
+.DS_Store
+
+# Swift / Xcode
+build/
+DerivedData/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+.swiftpm/

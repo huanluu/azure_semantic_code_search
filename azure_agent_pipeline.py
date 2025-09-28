@@ -67,6 +67,7 @@ class PipelineConfig:
     knowledge_source_name: str
     agent_name: str
     agent_model: str
+    project_agent_name: str
     documents_url: str = (
         "https://raw.githubusercontent.com/Azure-Samples/azure-search-sample-data/refs/heads/main/"
         "nasa-e-book/earth-at-night-json/documents.json"
@@ -237,7 +238,7 @@ class AgenticRetrievalPipeline:
 
     def ensure_ai_agent(self) -> None:
         cfg = self.config
-        print(f"Creating Foundry agent '{cfg.agent_name}'...")
+        print(f"Creating Foundry agent '{cfg.project_agent_name}'...")
         instructions = (
             "A Q&A agent that can answer questions about the Earth at night.\n"
             "Sources have a JSON format with a ref_id that must be cited in the answer using the format [ref_id].\n"
@@ -245,10 +246,10 @@ class AgenticRetrievalPipeline:
         )
         self.agent = self.project_client.agents.create_agent(
             model=cfg.agent_model,
-            name=cfg.agent_name,
+            name=cfg.project_agent_name,
             instructions=instructions,
         )
-        print(f"AI agent '{cfg.agent_name}' is ready.")
+        print(f"AI agent '{cfg.project_agent_name}' is ready.")
 
     def configure_agentic_tool(self) -> None:
         cfg = self.config
@@ -374,7 +375,7 @@ class AgenticRetrievalPipeline:
     def _get_existing_ai_agent(self) -> Optional[Any]:
         try:
             for agent in self.project_client.agents.list_agents():
-                if getattr(agent, "name", None) == self.config.agent_name:
+                if getattr(agent, "name", None) == self.config.project_agent_name:
                     return agent
         except HttpResponseError as err:
             if getattr(err, "status_code", None) != 404:
@@ -400,7 +401,7 @@ class AgenticRetrievalPipeline:
             self.create_knowledge_agent()
         existing_agent = self._get_existing_ai_agent()
         if existing_agent is not None:
-            print(f"AI agent '{cfg.agent_name}' already exists. Reusing existing agent.")
+            print(f"AI agent '{cfg.project_agent_name}' already exists. Reusing existing agent.")
             self.agent = existing_agent
         else:
             self.ensure_ai_agent()
@@ -432,6 +433,31 @@ class AgenticRetrievalPipeline:
         except ResourceNotFoundError:
             print("Knowledge agent already deleted or missing.")
         try:
+            existing_agent = self._get_existing_ai_agent()
+            if existing_agent is not None:
+                agent_id = getattr(existing_agent, "id", None)
+                if agent_id:
+                    delete_agent = getattr(self.project_client.agents, "delete_agent", None)
+                    begin_delete_agent = getattr(self.project_client.agents, "begin_delete_agent", None)
+                    if callable(delete_agent):
+                        delete_agent(agent_id)
+                    elif callable(begin_delete_agent):
+                        poller = begin_delete_agent(agent_id)
+                        try:
+                            poller.wait()
+                        except AttributeError:
+                            # Fallback for pollers without wait(); best effort completion.
+                            pass
+                    else:
+                        print("Foundry agent delete API unavailable; skipping delete.")
+                    print(f"Deleted Foundry agent '{cfg.project_agent_name}'.")
+                else:
+                    print("Foundry agent record missing identifier; skipping delete.")
+            else:
+                print("Foundry agent already deleted or missing.")
+        except (HttpResponseError, AttributeError) as err:
+            print(f"Foundry agent cleanup skipped: {err}.")
+        try:
             self.index_client.delete_knowledge_source(knowledge_source=cfg.knowledge_source_name)
             print(f"Deleted knowledge source '{cfg.knowledge_source_name}'.")
         except (ResourceNotFoundError, HttpResponseError) as err:
@@ -441,6 +467,9 @@ class AgenticRetrievalPipeline:
             print(f"Deleted index '{cfg.index_name}'.")
         except ResourceNotFoundError:
             print("Index already deleted or missing.")
+        self.agent = None
+        self.thread = None
+        self.toolset = None
         print("Cleanup complete.")
 
     # endregion
@@ -456,6 +485,8 @@ def load_config_from_env() -> PipelineConfig:
     missing = [var for var in required_vars if not os.getenv(var)]
     if missing:
         raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
+    agent_name = os.getenv("AZURE_SEARCH_AGENT_NAME", "earth-search-agent")
+    project_agent_name = os.getenv("PROJECT_AGENT_NAME", f"{agent_name}-orchestrator")
     return PipelineConfig(
         project_endpoint=os.environ["PROJECT_ENDPOINT"],
         search_endpoint=os.environ["AZURE_SEARCH_ENDPOINT"],
@@ -466,8 +497,9 @@ def load_config_from_env() -> PipelineConfig:
         azure_openai_embedding_model=os.getenv("AZURE_OPENAI_EMBEDDING_MODEL", "text-embedding-3-large"),
         index_name=os.getenv("AZURE_SEARCH_INDEX", "earth_at_night"),
         knowledge_source_name=os.getenv("AZURE_SEARCH_KNOWLEDGE_SOURCE_NAME", "earth-at-night-ks"),
-        agent_name=os.getenv("AZURE_SEARCH_AGENT_NAME", "earth-search-agent"),
+        agent_name=agent_name,
         agent_model=os.getenv("AGENT_MODEL", "gpt-4.1-mini"),
+        project_agent_name=project_agent_name,
     )
 
 

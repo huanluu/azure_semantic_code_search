@@ -342,13 +342,68 @@ class AgenticRetrievalPipeline:
     # endregion
 
     # region Orchestration helpers
+    def _search_index_exists(self) -> bool:
+        try:
+            self.index_client.get_index(self.config.index_name)
+            return True
+        except ResourceNotFoundError:
+            return False
+
+    def _knowledge_source_exists(self) -> bool:
+        try:
+            self.index_client.get_knowledge_source(self.config.knowledge_source_name)
+            return True
+        except ResourceNotFoundError:
+            return False
+        except HttpResponseError as err:
+            if getattr(err, "status_code", None) == 404:
+                return False
+            raise
+
+    def _knowledge_agent_exists(self) -> bool:
+        try:
+            self.index_client.get_agent(self.config.agent_name)
+            return True
+        except ResourceNotFoundError:
+            return False
+        except HttpResponseError as err:
+            if getattr(err, "status_code", None) == 404:
+                return False
+            raise
+
+    def _get_existing_ai_agent(self) -> Optional[Any]:
+        try:
+            for agent in self.project_client.agents.list_agents():
+                if getattr(agent, "name", None) == self.config.agent_name:
+                    return agent
+        except HttpResponseError as err:
+            if getattr(err, "status_code", None) != 404:
+                raise
+        return None
+
     def setup_pipeline(self, upload_docs: bool = True) -> None:
-        self.create_search_index()
-        if upload_docs:
-            self.upload_documents()
-        self.create_knowledge_source()
-        self.create_knowledge_agent()
-        self.ensure_ai_agent()
+        cfg = self.config
+
+        if self._search_index_exists():
+            print(f"Search index '{cfg.index_name}' already exists. Skipping creation, assusing doc already uploaded.")
+        else:
+            self.create_search_index()
+            if upload_docs:
+                self.upload_documents()
+        if self._knowledge_source_exists():
+            print(f"Knowledge source '{cfg.knowledge_source_name}' already exists. Skipping creation.")
+        else:
+            self.create_knowledge_source()
+        if self._knowledge_agent_exists():
+            print(f"Knowledge agent '{cfg.agent_name}' already exists. Skipping creation.")
+        else:
+            self.create_knowledge_agent()
+        existing_agent = self._get_existing_ai_agent()
+        if existing_agent is not None:
+            print(f"AI agent '{cfg.agent_name}' already exists. Reusing existing agent.")
+            self.agent = existing_agent
+        else:
+            self.ensure_ai_agent()
         self.configure_agentic_tool()
 
 
@@ -479,7 +534,6 @@ def main() -> None:
                     continue
                     
                 if user_input.lower() in ['quit', 'exit', 'q']:
-                    pipeline.cleanup()
                     print("Goodbye!")
                     break
                     

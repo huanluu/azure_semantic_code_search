@@ -104,6 +104,7 @@ class AgenticRetrievalPipeline:
                     vector_search_profile_name="hnsw_text_3_large",
                 ),
                 SearchField(name="page_number", type="Edm.Int32", filterable=True, sortable=True, facetable=True),
+                SearchField(name="file_path", type="Edm.String", filterable=True, sortable=True, facetable=False),
             ],
             vector_search=VectorSearch(
                 profiles=[
@@ -167,6 +168,7 @@ class AgenticRetrievalPipeline:
                     "id": doc_id,
                     "page_chunk": page_chunk,
                     "page_number": idx,
+                    "file_path": relative_path,
                 }
             )
 
@@ -203,7 +205,7 @@ class AgenticRetrievalPipeline:
             description="Knowledge source for Earth at night data",
             search_index_parameters=SearchIndexKnowledgeSourceParameters(
                 search_index_name=cfg.index_name,
-                source_data_select="id,page_chunk,page_number",
+                source_data_select="id,page_chunk,page_number, file_path",
             ),
         )
         self.index_client.create_or_update_knowledge_source(knowledge_source=ks)
